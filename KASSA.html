@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>X.KASSA (beta)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+        h1 {
+            grid-column: 1 / -1;
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        .input-panel {
+            border-right: 1px solid #eee;
+            padding-right: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button.add-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button.add-btn:hover { background-color: #219150; }
+        
+        .receipt-panel {
+            padding-left: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+        th {
+            background-color: #ecf0f1;
+        }
+        .total-row td {
+            font-weight: bold;
+            border-top: 2px solid #333;
+        }
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        button.print-btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button.print-btn:hover { background-color: #2980b9; }
+        
+        @media print {
+            body * { visibility: hidden; }
+            #printable-receipt, #printable-receipt * { 
+                visibility: visible; 
+            }
+            #printable-receipt {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 20px;
+                box-shadow: none;
+                grid-template-columns: 1fr;
+            }
+            .input-panel, .actions { display: none; }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            .input-panel, .receipt-panel {
+                border: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="input-panel">
+        <h2>Добавить товар</h2>
+        <div class="form-group">
+            <label for="itemName">Наименование:</label>
+            <input type="text" id="itemName" placeholder="Например: Хлеб Бородинский">
+        </div>
+        <div class="form-group">
+            <label for="itemPrice">Цена за единицу (₽):</label>
+            <input type="number" id="itemPrice" step="0.01" min="0" placeholder="50.00">
+        </div>
+        <div class="form-group">
+            <label for="itemQty">Количество:</label>
+            <input type="number" id="itemQty" value="1" min="1">
+        </div>
+        <button class="add-btn" onclick="addItem()">Добавить в чек</button>
+    </div>
+
+    <div class="receipt-panel">
+        <h2>Корзина</h2>
+        <table id="cart-table">
+            <thead>
+                <tr>
+                    <th>Товар</th>
+                    <th style="width: 80px;">Кол-во</th>
+                    <th style="width: 100px;">Сумма</th>
+                    <th style="width: 40px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="2">Итого к оплате:</td>
+                    <td id="grandTotal">0.00 ₽</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="actions">
+            <span id="current-time"></span>
+            <button class="print-btn" onclick="generateReceipt()">Сформировать чек</button>
+        </div>
+
+        <div id="printable-receipt" style="display: none; border: 1px dashed #ccc; padding: 15px; font-size: 14px; line-height: 1.4;">
+            <div style="text-align: center; margin-bottom: 10px;">
+                <strong style="font-size: 18px;">КАССОВЫЙ ЧЕК</strong><br>
+                <span id="receipt-date"></span>
+            </div>
+            <hr style="border: 0; border-top: 1px dashed #ccc; margin: 10px 0;">
+            <div id="receipt-items"></div>
+            <hr style="border: 0; border-top: 2px solid #333; margin: 10px 0;">
+            <div style="text-align: right; font-weight: bold; font-size: 16px;">
+                ИТОГО: <span id="receipt-total"></span> ₽
+            </div>
+            <div style="margin-top: 20px; font-size: 12px; text-align: center; color: #666;">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let cart = [];
+
+function renderCart() {
+    const tbody = document.querySelector('#cart-table tbody');
+    const totalElem = document.getElementById('grandTotal');
+    
+    tbody.innerHTML = '';
+    
+    let grandTotal = 0;
+
+    cart.forEach((item, index) => {
+        const row = document.createElement('tr');
+        
+        const itemTotal = (item.price * item.qty).toFixed(2);
+        grandTotal += parseFloat(itemTotal);
+
+        row.innerHTML = `
+            <td>${item.name}</td>
+            <td>${item.qty}</td>
+            <td>${itemTotal} ₽</td>
+            <td><button onclick="removeItem(${index})" title="Удалить позицию" style="background:none; border:none; color:#e74c3c; cursor:pointer;">✕</button></td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    totalElem.textContent = grandTotal.toFixed(2) + ' ₽';
+}
+
+function addItem() {
+    const nameInput = document.getElementById('itemName');
+    const priceInput = document.getElementById('itemPrice');
+    const qtyInput = document.getElementById('itemQty');
+
+    const name = nameInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    const qty = parseInt(qtyInput.value);
+
+    if (!name || isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
+        alert('Пожалуйста, заполните все поля корректными данными.');
+        return;
+    }
+
+    cart.push({ name, price, qty });
+    
+    nameInput.value = '';
+    priceInput.value = '';
+    qtyInput.value = 1;
+    
+    renderCart();
+}
+
+function removeItem(index) {
+    cart.splice(index, 1);
+    renderCart();
+}
+
+function generateReceipt() {
+    if (cart.length === 0) {
+        alert('Корзина пуста. Добавьте товары для формирования чека.');
+        return;
+    }
+
+    const receiptDate = new Date().toLocaleString('ru-RU', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+    document.getElementById('receipt-date').textContent = receiptDate;
+
+    let itemsHtml = '';
+    let finalTotal = 0;
+
+    cart.forEach(item => {
+        const sum = (item.price * item.qty).toFixed(2);
+        finalTotal += parseFloat(sum);
+        itemsHtml += `<div>${item.name} x ${item.qty} — ${sum} ₽</div>`;
+    });
+
+    document.getElementById('receipt-items').innerHTML = itemsHtml;
+    document.getElementById('receipt-total').textContent = finalTotal.toFixed(2);
+
+    const printBlock = document.getElementById('printable-receipt');
+    printBlock.style.display = 'block';
+    
+    window.print(); 
+    
+    setTimeout(() => {
+        printBlock.style.display = 'none';
+    }, 500);
+}
+
+function updateTime() {
+    const now = new Date();
+    document.getElementById('current-time').textContent = now.toLocaleTimeString('ru-RU');
+}
+updateTime();
+setInterval(updateTime, 1000);
+</script>
+
+</body>
+</html>
